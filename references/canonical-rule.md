@@ -2,7 +2,7 @@
 
 > **Hard rule (activation):** when a session is in an idle-wait state (operator AFK, parallel session output, PR convergence, CI run, deploy, or any external trigger that may exceed ~5 minutes), the agent MUST arm a WarmPulse: a Monitor with intervals under 270 seconds whose stdout keeps the prompt cache warm. Going silent past the TTL costs the full re-prime on resume.
 >
-> **Hard rule (maintain):** once armed, the agent MUST NOT stop the WarmPulse. It runs until `timeout_ms` OR explicit operator instruction. No other condition authorises `TaskStop`.
+> **Hard rule (maintain):** once armed, the agent MUST NOT stop the WarmPulse. With `persistent=true` (default), runs until operator instruction only. With `persistent=false`, runs until `timeout_ms`. No other condition authorises `TaskStop`.
 
 ## Vocabulary
 
@@ -19,17 +19,17 @@ Prompt cache TTL: **5 minutes**. After that interval without activity, the cache
 
 Arm a WarmPulse in any of:
 
-- **Operator AFK**: stepped away or "I'll come back later" with open question or pending decision.
+- **Operator AFK**: stepped away with open question or pending decision.
 - **Parallel session**: another session running a cycle whose result the current session needs.
 - **External job**: CI run, deploy, background script, remote queue job.
-- **PR convergence**: bot pyramid reviewing, merge gate waiting for approvals or CI green.
+- **PR convergence**: bot pyramid reviewing, merge gate waiting.
 - **Cron trigger**: anything on a wall-clock schedule outside the agent's control.
 
 ## SKIP triggers
 
 - **Pure read-only response**: question answered, turn ends, no wait state.
-- **One-shot completion wait**: single notification on a finite job (use `Bash run_in_background` + `until` loop instead).
-- **Sub-5-minute work**: expected wait reliably under 4 minutes.
+- **One-shot completion wait**: use `Bash run_in_background` + `until` loop instead (one notification on exit).
+- **Sub-5-minute work**: expected wait under 4 minutes.
 
 ## Canonical pattern
 
@@ -55,17 +55,17 @@ Forbidden `TaskStop` reasons:
 - Session looks idle and WarmPulse seems redundant.
 - Errors keep firing (self-handle via `|| true` and `ERR` emission).
 
-**Authorised stop**: explicit operator instruction ("stop the WarmPulse", "kill task `<id>`"). Only.
+**Authorised stop**: explicit operator instruction only ("stop the WarmPulse", "kill task `<id>`").
 
-**Zero-gap swap**: arm replacement FIRST, verify INIT, then stop old WarmPulse.
+**Zero-gap swap**: arm new FIRST, verify INIT, then stop old.
 
 ## Proactive activation
 
-After idempotency check (verify no WarmPulse already running in session):
+After idempotency check (no WarmPulse already running in session):
 
 1. End of `/goal` block assembly destined for a later session.
-2. End of "surface in final message" per `session-handoff-discipline.md` §2.1.
-3. After AskUserQuestion when the answer is plausibly >5 min away.
+2. After "surface in final message" per `session-handoff-discipline.md §2.1`.
+3. After AskUserQuestion when answer plausibly >5 min away.
 
 **Defaults**: `persistent=true`; 240s interval; BEAT-${ITER} emit; NONE TERMINAL self-exit.
 
@@ -88,7 +88,7 @@ Default: emit `BEAT-N` from the incoming event. ~3 to 5 output tokens per tick. 
 
 ## Filter discipline
 
-Emit only on state change. Use `grep --line-buffered` in pipes. Add `ERR` on transient failure. No TERMINAL self-exit for WarmPulses.
+Composable variant and domain monitors: emit only on state change; `grep --line-buffered` in pipes; `ERR` on transient failure. Pure 6-liner WarmPulse: emits BEAT-N on every tick (by design). No TERMINAL self-exit for WarmPulses.
 
 ## Common AFK patterns
 
@@ -101,9 +101,9 @@ Emit only on state change. Use `grep --line-buffered` in pipes. Add `ERR` on tra
 
 ## Cross-references
 
-- ROI analysis, cost math, break-even: `send-package/05-CACHE-MECHANICS-ANNEX.md` + `04-IMPLEMENTATION-ANNEX.md`
-- Full procedure, composable variant, filter examples: `Skill(warmpulse)` or `skills/warmpulse/SKILL.md`
-- Monitor invocation command: `/warmpulse` or `commands/warmpulse.md`
+- ROI, cost math, break-even: `send-package/05-CACHE-MECHANICS-ANNEX.md` + `04-IMPLEMENTATION-ANNEX.md`
+- Full procedure, composable variant: `Skill(warmpulse)` / `skills/warmpulse/SKILL.md`
+- Monitor invocation: `/warmpulse` or `commands/warmpulse.md`
 - Sibling rules: `goal-prompt-4000-char-limit.md`, `autonomous-mode-invariants.md`, `session-handoff-discipline.md §2.1`, `goal-subagent-orchestration.md`
 - Codification history (v1.0.0 through v1.3.0): `doctrine-snapshots/warmpulse-empirical-anchors.md`
 
