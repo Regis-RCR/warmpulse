@@ -4,7 +4,7 @@ description: Arm a WarmPulse heartbeat Monitor with canonical defaults (persiste
 license: Apache-2.0
 allowed-tools: Monitor Bash
 metadata:
-  version: 1.0.0
+  version: 1.1.0
 ---
 
 # /warmpulse
@@ -13,25 +13,25 @@ Arms a WarmPulse heartbeat Monitor against the Anthropic 5-minute prompt-cache T
 
 ## What it does
 
-1. Idempotency check : if a Monitor with summary `WarmPulse` is already running in the session, refuse with a one-line note ("WarmPulse already armed ; task-id $X").
-2. Invokes `Monitor` with the canonical defaults :
+1. Idempotency check: if a Monitor with `summary="WarmPulse"` is already running, refuse with "WarmPulse already armed (task `<id>`)."
+2. Invoke `Monitor` with canonical defaults:
    - `command="ITER=0 ; while true ; do ITER=$((ITER+1)) ; echo \"BEAT-${ITER}\" ; sleep 240 ; done"`
    - `persistent=true`
    - `summary="WarmPulse"`
    - `description="WarmPulse heartbeat at 240s interval"`
-3. Announces the task-id to the operator with a one-line confirmation.
+3. Announce: `WarmPulse armed (task <id>, BEAT every 240s, persistent until operator stop).`
 
 ## When NOT to invoke
 
 - Pure read-only conversation (no wait state).
 - One-shot completion wait under 5 minutes.
-- When a WarmPulse is already armed in this session (idempotency).
+- WarmPulse already armed in this session (idempotency).
 
 ## Cross-references
 
-- Skill body and full doctrine extract : `skills/warmpulse/SKILL.md`.
-- Canonical operator rule (full depth) : `references/canonical-rule.md`.
+- Full doctrine and decision rules: `skills/warmpulse/SKILL.md`
+- Canonical operator rule (full depth): `references/canonical-rule.md`
 
 ∵ Regis RCR ∴
 
-*v1.0.0 - 2026-05-28*
+*v1.1.0 - 2026-05-28*
