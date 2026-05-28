@@ -1,0 +1,11 @@
+{
+  "event": "SessionStart",
+  "description": "Auto-arm WarmPulse heartbeat if ~/.claude/warmpulse.config.json sets auto_arm: true. Defaults to no-op if config absent or auto_arm is false.",
+  "matcher": {},
+  "hooks": [
+    {
+      "type": "command",
+      "command": "if [[ -f \"$HOME/.claude/warmpulse.config.json\" ]] && grep -qE '\"auto_arm\"\\s*:\\s*true' \"$HOME/.claude/warmpulse.config.json\" ; then echo '{\"hookSpecificOutput\":{\"hookEventName\":\"SessionStart\",\"additionalContext\":\"WarmPulse auto-arm requested. Invoke /warmpulse to start the heartbeat Monitor.\"}}' ; else echo '{\"continue\":true}' ; fi"
+    }
+  ]
+}

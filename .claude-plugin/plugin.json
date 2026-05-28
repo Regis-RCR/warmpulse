@@ -1,0 +1,9 @@
+{
+  "name": "warmpulse",
+  "version": "1.0.0",
+  "description": "Heartbeat Monitor pattern against Claude Code 5-min prompt-cache TTL",
+  "author": "Regis-RCR",
+  "license": "Apache-2.0",
+  "homepage": "https://github.com/Regis-RCR/warmpulse",
+  "repository": "https://github.com/Regis-RCR/warmpulse"
+}
