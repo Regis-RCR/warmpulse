@@ -4,12 +4,12 @@ description: Arm a WarmPulse heartbeat Monitor with canonical defaults (persiste
 license: Apache-2.0
 allowed-tools: Monitor Bash
 metadata:
-  version: 1.1.0
+  version: 1.2.0
 ---
 
 # /warmpulse
 
-Arms a WarmPulse heartbeat Monitor against the Anthropic 5-minute prompt-cache TTL.
+Arms a WarmPulse heartbeat Monitor against the Anthropic prompt-cache TTL (main interactive thread ~1 hour in the measured corpus ; subagent tier ~5 minutes ; WarmPulse runs on the main thread).
 
 ## What it does
 
@@ -24,7 +24,8 @@ Arms a WarmPulse heartbeat Monitor against the Anthropic 5-minute prompt-cache T
 ## When NOT to invoke
 
 - Pure read-only conversation (no wait state).
-- One-shot completion wait under 5 minutes.
+- One-shot completion wait (use `Bash run_in_background` + `until` instead).
+- Short, dollar-neutral wait the ~1-hour main cache already holds (no re-prime at stake).
 - WarmPulse already armed in this session (idempotency).
 
 ## Cross-references
@@ -34,4 +35,4 @@ Arms a WarmPulse heartbeat Monitor against the Anthropic 5-minute prompt-cache T
 
 ∵ Regis RCR ∴
 
-*v1.1.0 - 2026-05-28*
+*v1.2.0 - 2026-05-30*

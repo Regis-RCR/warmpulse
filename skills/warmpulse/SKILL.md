@@ -1,15 +1,15 @@
 ---
 name: warmpulse
-description: Use when a Claude Code session enters an idle-wait state (operator AFK, parallel session output, external job pending, PR convergence, cron trigger) that may exceed 5 minutes. Arms a Monitor heartbeat at 240-second interval emitting BEAT-N lines. Each line counts as session activity, keeping the Anthropic prompt cache hit-priced across the wait. Skip in pure-read responses, one-shot completion waits, and sub-5-minute work.
+description: Use when a Claude Code session enters an idle-wait state (operator AFK, parallel session output, external job pending, PR convergence, cron trigger), especially a long or open-ended one. Arms a Monitor heartbeat at 240-second interval emitting BEAT-N lines that count as session activity and keep the Anthropic prompt cache warm across the wait. The main interactive thread runs a ~1-hour effective TTL (measured), so the heartbeat buys resume-latency readiness, with a dollar payoff only on AFKs approaching ~1 hour with large context. Skip in pure-read responses, one-shot completion waits, and short dollar-neutral waits.
 license: Apache-2.0
 allowed-tools: Monitor Bash
 metadata:
-  version: 1.1.0
+  version: 1.2.0
 ---
 
 # WarmPulse
 
-Heartbeat Monitor against the Anthropic 5-minute prompt-cache TTL. Doctrine: `~/.claude/rules/warmpulse.md`.
+Heartbeat Monitor against the Anthropic prompt-cache TTL (measured two-tier: main interactive thread ~1 hour, subagent tier ~5 minutes; WarmPulse runs on the main thread). Doctrine: `~/.claude/rules/warmpulse.md`.
 
 ## Arming procedure
 
@@ -30,9 +30,9 @@ Monitor(
 
 ## ARM / SKIP
 
-ARM in any idle-wait state that may exceed 5 minutes: operator AFK, parallel session output, external job, PR convergence, cron trigger.
+ARM in any idle-wait state, especially a long or open-ended one: operator AFK, parallel session output, external job, PR convergence, cron trigger. The dollar payoff needs an AFK approaching ~1 hour with large context (the ~1-hour main TTL holds shorter waits for free); shorter waits buy resume-latency only.
 
-SKIP: pure read-only response; one-shot completion wait under 5 min (use `Bash run_in_background` + `until` instead); sub-5-minute work.
+SKIP: pure read-only response; one-shot completion wait (use `Bash run_in_background` + `until` instead); short dollar-neutral waits the ~1-hour main cache already holds.
 
 ## Canonical pattern
 
@@ -69,21 +69,23 @@ done
 
 ## Tool selection rationale
 
-**Monitor over Bash run_in_background**: Bash gives one notification (job exit). Between start and exit, conversation goes silent. If the job takes >5 min, the cache expires before notification arrives. Monitor streaming events arrive on every loop tick, keeping cache warm.
+**Monitor over Bash run_in_background**: Bash gives one notification (job exit). Between start and exit, conversation goes silent. If the wait exceeds the main-thread TTL (~1 hour), the cache expires before that single exit notification arrives. Monitor's streaming events arrive on every loop tick, keeping the prefix warm; even below 1 hour Monitor preserves resume-latency (the prefix stays hot for the next interaction).
 
 **Monitor over ScheduleWakeup**: ScheduleWakeup is for `/loop` autonomous mode. Any delay >270s pays a cache miss on wake. Use ScheduleWakeup for recurring cron-like tasks, not for interactive WarmPulse.
 
 ## Decision rules
 
-**ARM proactively** (Pro/Max subscription): any idle wait >5 min with context >50k tokens. For API key: any wait >10 min with context >80k tokens.
+**ARM proactively** (Pro/Max subscription): marginal CASH is zero (quota-metered, not pay-as-you-go), so arm for any long or open-ended AFK where resume-latency matters; the only cost is bounded quota tokens (`cache_read` at ~10% of base). Largest value on AFKs with a big context.
 
-**DO NOT ARM** (API key with 1h opt-in): 1h TTL absorbs AFK windows; exception: multi-hour AFK with 200k+ context.
+**ARM** (API key, pay-as-you-go): arm only when the AFK approaches or exceeds ~1 hour with a large context (>80k tokens), where a real reprime on the ~1-hour main TTL is at stake. Below ~1 hour the cache holds for free and the heartbeat net-costs dollars.
+
+**DO NOT ARM**: short waits the ~1-hour main TTL absorbs for free (on API key, paying dollars for nothing); exception: multi-hour AFK with 200k+ context where the reprime is large and certain.
 
 **WarmPulse vs domain monitor**: WarmPulse if intent = "keep cache warm while I wait"; domain monitor if intent = "watch X until done" (TERMINAL self-exit legitimate for domain monitors).
 
 ## Full arming defaults
 
-- `persistent=true`: runs until operator TaskStop or session end. `timeout_ms` ignored. Use `persistent=false` + `timeout_ms` ONLY for bounded wait under 1h.
+- `persistent=true`: runs until operator TaskStop or session end. `timeout_ms` ignored. Use `persistent=false` + `timeout_ms` ONLY for a bounded wait (e.g. within the ~1-hour main TTL).
 - `summary="WarmPulse"` (literal): each extra word costs ~1 token per tick on multi-day runs.
 - Interval: 240s (hard ceiling 270s; never 300s).
 - TERMINAL self-exit: NONE for WarmPulses.
@@ -110,10 +112,10 @@ Retired: middle-dot `·` ack (v1.2.3, operator pushback 2026-05-28). True zero-o
 
 - Operator rule (eager-loaded): `~/.claude/rules/warmpulse.md`
 - Full rule snapshot: `references/canonical-rule.md`
-- Cost math, ROI analysis: `send-package/04-IMPLEMENTATION-ANNEX.md` + `05-CACHE-MECHANICS-ANNEX.md` (dev repo)
+- Honest cost counterfactual (net-cost on dollars; value on quota/latency/zero subscription cash): `send-package/04-IMPLEMENTATION-ANNEX.md` + `05-CACHE-MECHANICS-ANNEX.md` (dev repo, v0.8.0 forensic report)
 - Slash command: `/warmpulse` or `commands/warmpulse.md`
 - Codification history: `doctrine-snapshots/warmpulse-empirical-anchors.md` (dev repo)
 
 ∵ Regis RCR ∴
 
-*v1.1.0 - 2026-05-28 | [Changelog](.development/changelog.md)*
+*v1.2.0 - 2026-05-30 | [Changelog](.development/changelog.md)*
