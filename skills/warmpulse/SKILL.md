@@ -1,10 +1,10 @@
 ---
 name: warmpulse
-description: Use when a Claude Code session enters an idle-wait state (operator AFK, parallel session output, external job pending, PR convergence, cron trigger), especially a long or open-ended one. Arms a Monitor heartbeat at 240-second interval emitting BEAT-N lines that count as session activity and keep the Anthropic prompt cache warm across the wait. The main interactive thread runs a ~1-hour effective TTL (measured), so the heartbeat buys resume-latency readiness, with a dollar payoff only on AFKs approaching ~1 hour with large context. Skip in pure-read responses, one-shot completion waits, and short dollar-neutral waits.
+description: Use when a Claude Code session enters an idle-wait state (operator AFK, parallel session output, external job pending, PR convergence, cron trigger), especially a long or open-ended one. Arms a Monitor heartbeat at an adaptive interval (default 3300s just under the ~1h main TTL, scaled down to the requested wait window) emitting BEAT-N lines that count as session activity and keep the Anthropic prompt cache warm across the wait. The main interactive thread runs a ~1-hour effective TTL (measured), so the heartbeat buys resume-latency readiness, with a dollar payoff only on AFKs approaching ~1 hour with large context. Skip in pure-read responses, one-shot completion waits, and short dollar-neutral waits.
 license: Apache-2.0
 allowed-tools: Monitor Bash
 metadata:
-  version: 1.2.0
+  version: 1.3.0
 ---
 
 # WarmPulse
@@ -15,18 +15,25 @@ Heartbeat Monitor against the Anthropic prompt-cache TTL (measured two-tier: mai
 
 1. **Idempotency check**: if a task with `summary="WarmPulse"` is already running, refuse with "WarmPulse already armed (task `<id>`)." Do NOT arm a second instance.
 
-2. **Invoke Monitor**:
+2. **Compute the interval** from the requested window (the `/warmpulse` argument, natural form: `5 minutes`, `1h`, `55 minutes`; empty = open-ended):
+
+   - `W` = window in seconds (empty -> open-ended).
+   - `margin = clamp(W/12, 60s, 300s)` ; `INTERVAL = clamp(W - margin, 60s, 3300s)`.
+   - Empty window -> `INTERVAL=3300`, persistent.
+   - The 3300s cap sits just under the proven ~1h main TTL: a BEAT every <=55 min resets the 1h cache, so one cadence holds any wait length. Below 1h the cadence matches the named window (5 min -> 240s, 30 min -> 1650s), not a fixed 240s.
+
+3. **Invoke Monitor** with the computed INTERVAL:
 
 ```
 Monitor(
-  command="ITER=0 ; while true ; do ITER=$((ITER+1)) ; echo \"BEAT-${ITER}\" ; sleep 240 ; done",
-  persistent=true,
+  command="ITER=0 ; while true ; do ITER=$((ITER+1)) ; echo \"BEAT-${ITER}\" ; sleep <INTERVAL> ; done",
+  persistent=<true if open-ended ; false + timeout_ms=W*1000 if a finite window was named>,
   summary="WarmPulse",
-  description="WarmPulse heartbeat at 240s interval"
+  description="WarmPulse heartbeat at <INTERVAL>s interval"
 )
 ```
 
-3. **Announce**: `WarmPulse armed (task <id>, BEAT every 240s, persistent until operator stop).`
+4. **Announce**: `WarmPulse armed (task <id>, BEAT every <INTERVAL>s, <persistent until operator stop | bounded ~<window>>).`
 
 ## ARM / SKIP
 
@@ -37,11 +44,12 @@ SKIP: pure read-only response; one-shot completion wait (use `Bash run_in_backgr
 ## Canonical pattern
 
 ```bash
+INTERVAL=3300   # default ; scale down to the requested window (5 min -> 240)
 ITER=0
 while true; do
   ITER=$((ITER+1))
   echo "BEAT-${ITER}"
-  sleep 240
+  sleep "$INTERVAL"
 done
 ```
 
@@ -50,6 +58,7 @@ done
 Use when domain signal is also worth surfacing (same interval, no extra cost):
 
 ```bash
+INTERVAL=3300   # default ; scale down to the requested window
 PREV=""
 ITER=0
 while true; do
@@ -61,7 +70,7 @@ while true; do
     echo "BEAT-${ITER}"
   fi
   PREV=$CUR
-  sleep 240
+  sleep "$INTERVAL"
 done
 ```
 
@@ -71,7 +80,7 @@ done
 
 **Monitor over Bash run_in_background**: Bash gives one notification (job exit). Between start and exit, conversation goes silent. If the wait exceeds the main-thread TTL (~1 hour), the cache expires before that single exit notification arrives. Monitor's streaming events arrive on every loop tick, keeping the prefix warm; even below 1 hour Monitor preserves resume-latency (the prefix stays hot for the next interaction).
 
-**Monitor over ScheduleWakeup**: ScheduleWakeup is for `/loop` autonomous mode. Any delay >270s pays a cache miss on wake. Use ScheduleWakeup for recurring cron-like tasks, not for interactive WarmPulse.
+**Monitor over ScheduleWakeup**: ScheduleWakeup is for `/loop` autonomous mode. A delay approaching the ~1h main TTL pays a cache miss on wake. Use ScheduleWakeup for recurring cron-like tasks, not for interactive WarmPulse.
 
 ## Decision rules
 
@@ -87,7 +96,7 @@ done
 
 - `persistent=true`: runs until operator TaskStop or session end. `timeout_ms` ignored. Use `persistent=false` + `timeout_ms` ONLY for a bounded wait (e.g. within the ~1-hour main TTL).
 - `summary="WarmPulse"` (literal): each extra word costs ~1 token per tick on multi-day runs.
-- Interval: 240s (hard ceiling 270s; never 300s).
+- Interval: adaptive, default 3300s (cap 3300s, just under the ~1h main TTL); scales down to the requested window (5 min -> 240s); floor 60s. The legacy fixed 240s default was a 5-minute-tier artifact and over-ticks ~15x against the measured ~1h main TTL.
 - TERMINAL self-exit: NONE for WarmPulses.
 
 ## Zero-gap swap
@@ -118,4 +127,4 @@ Retired: middle-dot `·` ack (v1.2.3, operator pushback 2026-05-28). True zero-o
 
 ∵ Regis RCR ∴
 
-*v1.2.0 - 2026-05-30 | [Changelog](.development/changelog.md)*
+*v1.3.0 - 2026-06-03 | [Changelog](.development/changelog.md)*

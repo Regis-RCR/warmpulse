@@ -3,6 +3,20 @@
 All notable changes to the `warmpulse` skill are documented here.
 Format inspired by Keep a Changelog ; SemVer applied.
 
+## [1.3.0] - 2026-06-03
+
+Adaptive BEAT interval. The cadence now scales to the requested wait window
+instead of a fixed 240s. `INTERVAL = clamp(W - clamp(W/12, 60s, 300s), 60s,
+3300s)` where `W` is the named window in seconds ; empty argument -> persistent
+at the 3300s default. The 3300s cap sits just under the proven ~1h main-thread
+TTL (a BEAT every <=55 min resets the 1h cache, so one cadence holds any wait
+length) ; below 1h the cadence matches the named window (5 min -> 240s, 30 min
+-> 1650s). The legacy fixed 240s default over-ticked ~15x against the measured
+~1h main TTL (v0.8.0 forensic close-out). `scripts/warmpulse.sh` now takes an
+optional `[INTERVAL_SECONDS]` argument (default 3300). The 270s hard ceiling is
+retired in favor of the 3300s cap. Mechanics otherwise unchanged
+(no-unilateral-TaskStop, surface-N ack, idempotency).
+
 ## [1.2.0] - 2026-05-30
 
 TTL premise corrected to the measured two-tier model from the v0.8.0 forensic

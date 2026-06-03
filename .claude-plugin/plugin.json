@@ -1,6 +1,6 @@
 {
   "name": "warmpulse",
-  "version": "1.2.0",
+  "version": "1.3.0",
   "description": "Heartbeat Monitor pattern keeping the Claude Code main-thread prompt cache warm (measured ~1h TTL) across long idle waits",
   "author": "Regis-RCR",
   "license": "Apache-2.0",

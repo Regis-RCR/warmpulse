@@ -1,6 +1,6 @@
 # WarmPulse: heartbeat against the prompt-cache TTL
 
-> **Hard rule (activation):** when a session enters an idle-wait state (operator AFK, parallel session output, PR convergence, CI run, deploy, or any external trigger), arm a WarmPulse: a Monitor with intervals under 270 seconds whose stdout keeps the prompt cache warm. The main interactive thread runs a **~1-hour** effective cache TTL in the measured corpus (not 5 minutes), so a real re-prime is at stake only once the wait approaches or exceeds ~1 hour with a large context. Below that, the 1-hour cache holds the prefix for free and the heartbeat buys resume-latency readiness, not dollar savings (see "Cost, honest"). Arm when a long or open-ended AFK is plausible; the per-tick cost is small but not zero.
+> **Hard rule (activation):** when a session enters an idle-wait state (operator AFK, parallel session output, PR convergence, CI run, deploy, or any external trigger), arm a WarmPulse: a Monitor whose BEAT interval is sized to the wait (default 3300s just under the ~1h main TTL ; scaled down to a shorter declared window) and whose stdout keeps the prompt cache warm. The main interactive thread runs a **~1-hour** effective cache TTL in the measured corpus (not 5 minutes), so a real re-prime is at stake only once the wait approaches or exceeds ~1 hour with a large context. Below that, the 1-hour cache holds the prefix for free and the heartbeat buys resume-latency readiness, not dollar savings (see "Cost, honest"). Arm when a long or open-ended AFK is plausible; the per-tick cost is small but not zero.
 >
 > **Hard rule (maintain):** once armed, the agent MUST NOT stop the WarmPulse. With `persistent=true` (default), runs until operator instruction only. With `persistent=false`, runs until `timeout_ms`. No other condition authorises `TaskStop`.
 
@@ -34,15 +34,16 @@ Arm a WarmPulse in any of:
 ## Canonical pattern
 
 ```bash
+INTERVAL=3300   # default ; scale down to the named window (5 min -> 240)
 ITER=0
 while true; do
   ITER=$((ITER+1))
   echo "BEAT-${ITER}"
-  sleep 240
+  sleep "$INTERVAL"
 done
 ```
 
-Six lines. No remote API. Each `echo` emits one stdout line; arrives as a conversation event; counts as session activity.
+No remote API. Each `echo` emits one stdout line; arrives as a conversation event; counts as session activity.
 
 **Invocation**: `Monitor(command="...", persistent=true, summary="WarmPulse")`. Use `Skill(warmpulse)` or `/warmpulse` for canonical defaults.
 
@@ -67,22 +68,36 @@ After idempotency check (no WarmPulse already running in session):
 2. After "surface in final message" per `session-handoff-discipline.md §2.1`.
 3. After AskUserQuestion when the answer is plausibly a long wait away (a dollar payoff needs the wait to approach the ~1-hour main TTL; arm sooner if resume-latency matters).
 
-**Defaults**: `persistent=true`; 240s interval; BEAT-${ITER} emit; NONE TERMINAL self-exit.
+**Defaults**: `persistent=true`; adaptive interval (default 3300s, scaled to the named window); BEAT-${ITER} emit; NONE TERMINAL self-exit.
 
-**Announcement** (one line): `WarmPulse armed (task <id>, BEAT every 240s, persistent until operator stop).`
+**Announcement** (one line): `WarmPulse armed (task <id>, BEAT every <INTERVAL>s, persistent until operator stop).`
 
 ## Cadence
+
+Domain monitors poll their target at its natural rate:
 
 | Resource | Interval |
 |---|---|
 | Local filesystem / process | 0.5 to 5 s |
 | GitHub API | 90 to 240 s |
 | CI run | 60 to 120 s |
-| Pure WarmPulse | 240 s |
 
-Hard ceiling: **270 seconds**. Never 300s.
+A **pure WarmPulse** sizes its BEAT interval to the wait window it defends:
 
-Note on the 240s default: against a ~1-hour main TTL, 240s ticks roughly 15x more often than the TTL strictly requires. The tight interval is deliberate but it buys **resume-latency readiness** (the prefix is always warm for the next interaction), not dollar savings. A wider interval would still hold the 1-hour cache; the cost of the extra ticks is the per-tick `cache_read` of the full prefix (see "Cost, honest"). Keep 240s when resume-latency matters; widen it toward the 1-hour tier when only the dollar/quota floor matters.
+```
+W        = requested window in seconds (empty -> open-ended)
+margin   = clamp(W / 12, 60s, 300s)        # ~8%, min 1 min, max 5 min
+INTERVAL = clamp(W - margin, 60s, 3300s)   # one BEAT before the window closes
+```
+
+| Requested window | BEAT interval |
+|---|---|
+| (empty / open-ended) | 3300 s |
+| 5 min | 240 s |
+| 30 min | 1650 s |
+| 1 h or more | 3300 s (cap) |
+
+Hard ceiling: **3300 seconds** (55 min), one tick just under the proven ~1h main-thread TTL. A BEAT every <=55 min resets the 1h cache, so a single cadence keeps the prefix warm for any wait length. The legacy 270s ceiling was a 5-minute-tier artifact: against the measured ~1h main TTL a fixed 240s over-ticks ~15x (each tick costs the per-tick `cache_read` of the full prefix, see "Cost, honest"). Keep the cadence near the window the operator named (resume-latency rhythm); let it widen to the 3300s cap on open-ended waits (the dollar/quota floor).
 
 ## Surface-N ack
 
@@ -99,7 +114,7 @@ Composable variant and domain monitors: emit only on state change; `grep --line-
 | PR merge watch | 120 s | state == MERGED |
 | CI run watch | 60 s | conclusion != null |
 | Parallel session commit | 90 s | new SHA |
-| **WarmPulse** | 240 s | **NONE** |
+| **WarmPulse** | 3300 s (default, adaptive) | **NONE** |
 
 ## Cost, honest
 
@@ -122,4 +137,4 @@ Reframe: WarmPulse trades a small, bounded quota/latency cost for resume-readine
 
 ∵ RCR Regis ∴
 
-*v2.1.0 - 2026-05-30 | TTL premise corrected to the measured two-tier model (main ~1h, subagent ~5m); activation, cadence rationale, and cost framing reconciled with the v0.8.0 forensic counterfactual (net-cost on dollars, value on quota/latency/zero subscription cash). Mechanics (no-unilateral-TaskStop, Monitor-vs-Bash, 270s ceiling) unchanged.*
+*v2.2.0 - 2026-06-03 | Adaptive BEAT interval: cadence sized to the named wait window (INTERVAL = clamp(W - clamp(W/12, 60s, 300s), 60s, 3300s)), default 3300s on open-ended waits, cap 3300s just under the proven ~1h main TTL. Retires the 270s ceiling (a 5-minute-tier artifact that over-ticked ~15x). Other mechanics (no-unilateral-TaskStop, Monitor-vs-Bash, surface-N ack) unchanged.*
