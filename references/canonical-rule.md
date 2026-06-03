@@ -135,6 +135,6 @@ Reframe: WarmPulse trades a small, bounded quota/latency cost for resume-readine
 - Sibling rules: `goal-prompt-4000-char-limit.md`, `autonomous-mode-invariants.md`, `session-handoff-discipline.md §2.1`, `goal-subagent-orchestration.md`
 - Codification history (v1.0.0 through v1.3.0): `doctrine-snapshots/warmpulse-empirical-anchors.md`
 
-∵ RCR Regis ∴
+∵ Regis RCR ∴
 
 *v2.2.0 - 2026-06-03 | Adaptive BEAT interval: cadence sized to the named wait window (INTERVAL = clamp(W - clamp(W/12, 60s, 300s), 60s, 3300s)), default 3300s on open-ended waits, cap 3300s just under the proven ~1h main TTL. Retires the 270s ceiling (a 5-minute-tier artifact that over-ticked ~15x). Other mechanics (no-unilateral-TaskStop, Monitor-vs-Bash, surface-N ack) unchanged.*
