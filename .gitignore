@@ -2,5 +2,6 @@
 _PRIVATE/**
 **/_PRIVATE/**
 **/*.PRIVATE.*
-**/[conflicted*]
-**/[conflicted*].md
+# Unison conflict artefacts (e.g. "foo [conflicted 14].md"). The bracket class
+# [[] matches a literal '[' ; the trailing glob catches any extension or none.
+*[[]conflicted*
